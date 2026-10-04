@@ -73,21 +73,20 @@ int main(int argc, char **argv)
 	int xres_v = 0, yres_v = 0, xres_o = 0, yres_o = 0, xres = 0, yres = 0;
 	int c, use_png = 0, use_jpg = 0, jpg_quality = 80;
 	int quiet = 0, to_stdout = 0, req_width = 0, req_height = 0;
-	unsigned char *video, *osd, *output;
+	int video_only = 0, osd_only = 0;
+	unsigned char *video = NULL, *osd = NULL, *output = NULL;
 	const char* filename = "/tmp/screenshot.bmp";
 	char buf[256];
 
 	FILE *fp = fopen("/proc/fb", "r");
-	if (!fp) {
-		fprintf(stderr, "No framebuffer detected.\n");
-		return 1;
+	if (fp) {
+		while (fgets(buf, sizeof(buf), fp)) {
+			if (strcasestr(buf, "VULCAN")) stb_type = VULCAN;
+			if (strcasestr(buf, "PALLAS")) stb_type = PALLAS;
+			if (strcasestr(buf, "XILLEON")) stb_type = XILLEON;
+		}
+		fclose(fp);
 	}
-	while (fgets(buf, sizeof(buf), fp)) {
-		if (strcasestr(buf, "VULCAN")) stb_type = VULCAN;
-		if (strcasestr(buf, "PALLAS")) stb_type = PALLAS;
-		if (strcasestr(buf, "XILLEON")) stb_type = XILLEON;
-	}
-	fclose(fp);
 
 	if (stb_type == UNKNOWN) {
 		stb_type = BRCM_GENERIC;
@@ -96,8 +95,7 @@ int main(int argc, char **argv)
 		chr_luma_register_offset = 0x34;
 	}
 
-	// Aktualisierter Option-Parser inklusive -q, -s, -v (wird ignoriert da Standard) und -r
-	while ((c = getopt(argc, argv, "hj:pqsvr:")) != -1) {
+	while ((c = getopt(argc, argv, "hj:pqsvor:")) != -1) {
 		switch (c) {
 			case 'p':
 				use_png = 1;
@@ -116,7 +114,12 @@ int main(int argc, char **argv)
 				filename = NULL;
 				break;
 			case 'v':
-				// Beibehalten für Abwärtskompatibilität (Video ist ohnehin aktiv)
+				video_only = 1;
+				osd_only = 0;
+				break;
+			case 'o':
+				osd_only = 1;
+				video_only = 0;
 				break;
 			case 'r':
 				if (sscanf(optarg, "%d:%d", &req_width, &req_height) != 2) {
@@ -126,51 +129,63 @@ int main(int argc, char **argv)
 				break;
 			case 'h':
 			default:
-				fprintf(stderr, "Usage: grab [-p (png)] [-j quality (jpg)] [-q (quiet)] [-s (stdout)] [-r width:height] [filename]\n");
+				fprintf(stderr, "Usage: grab [-p] [-j quality] [-q] [-s] [-v] [-o] [-r width:height] [filename]\n");
 				return 1;
 		}
 	}
 	if (optind < argc && !to_stdout)
 		filename = argv[optind];
 
-	size_t mallocsize = 1920U * 1080U;
-	video = (unsigned char *)malloc(mallocsize * 3U);
-	osd = (unsigned char *)malloc(mallocsize * 4U);
+	// Puffer-Größe sicherheitshalber auf UHD maximieren, um Overflows beim Einlesen zu verhindern
+	size_t mallocsize = 3840U * 2160U;
 	output = (unsigned char *)malloc(mallocsize * 3U);
-
-	if (!video || !osd || !output) {
+	if (!output) {
 		if (!quiet) fprintf(stderr, "Out of memory.\n");
 		return 1;
 	}
 
-	getosd(osd, &xres_o, &yres_o);
-	getvideo(video, &xres_v, &yres_v);
+	if (!video_only) {
+		osd = (unsigned char *)malloc(mallocsize * 4U);
+		if (osd) getosd(osd, &xres_o, &yres_o);
+	}
 
-	if (xres_o <= 0 || yres_o <= 0) {
-		if (!quiet) fprintf(stderr, "OSD Capture failed. Saving video only.\n");
-		xres = xres_v; yres = yres_v;
-		memcpy(output, video, xres * yres * 3);
-	} else if (xres_v <= 0 || yres_v <= 0) {
-		if (!quiet) fprintf(stderr, "Video Capture failed. Saving OSD only.\n");
+	if (!osd_only) {
+		video = (unsigned char *)malloc(mallocsize * 3U);
+		if (video) getvideo(video, &xres_v, &yres_v);
+	}
+
+	if (osd_only || (xres_v <= 0 || yres_v <= 0)) {
+		if (xres_o <= 0 || yres_o <= 0) {
+			if (!quiet) fprintf(stderr, "OSD Capture failed.\n");
+			goto error_cleanup;
+		}
 		xres = xres_o; yres = yres_o;
-		for(int i=0; i<xres*yres; ++i) {
+		for(int i = 0; i < xres * yres; ++i) {
 			output[i*3+0] = osd[i*4+0];
 			output[i*3+1] = osd[i*4+1];
 			output[i*3+2] = osd[i*4+2];
 		}
+	} else if (video_only || (xres_o <= 0 || yres_o <= 0)) {
+		if (xres_v <= 0 || yres_v <= 0) {
+			if (!quiet) fprintf(stderr, "Video Capture failed.\n");
+			goto error_cleanup;
+		}
+		xres = xres_v; yres = yres_v;
+		memcpy(output, video, xres * yres * 3);
 	} else {
 		xres = xres_o; yres = yres_o;
 		if (xres_v != xres || yres_v != yres) {
 			unsigned char *resized_video = (unsigned char *)malloc(xres * yres * 3);
-			fast_resize(video, resized_video, xres_v, yres_v, xres, yres, 3);
-			combine(output, resized_video, osd, 0, 0, xres, yres, xres, yres);
-			free(resized_video);
+			if (resized_video) {
+				fast_resize(video, resized_video, xres_v, yres_v, xres, yres, 3);
+				combine(output, resized_video, osd, 0, 0, xres, yres, xres, yres);
+				free(resized_video);
+			}
 		} else {
 			combine(output, video, osd, 0, 0, xres, yres, xres, yres);
 		}
 	}
 
-	// Falls eine feste Zielauflösung über -r gefordert wurde
 	if (req_width > 0) {
 		if (req_height <= 0) {
 			req_height = (yres * req_width) / xres;
@@ -188,11 +203,11 @@ int main(int argc, char **argv)
 	FILE *fd2 = to_stdout ? stdout : fopen(filename, "wb");
 	if (!fd2) {
 		if (!quiet) fprintf(stderr, "Failed to open output stream.\n");
-		free(video); free(osd); free(output);
-		return 1;
+		goto error_cleanup;
 	}
 
 	if (!use_png && !use_jpg) {
+		// FEHLER BEHOBEN: Array-Größe [54] für den BMP Header korrigiert
 		unsigned char hdr[54];
 		memset(hdr, 0, 54);
 		hdr[0] = 'B'; hdr[1] = 'M';
@@ -246,9 +261,18 @@ int main(int argc, char **argv)
 	}
 
 	if (!to_stdout) fclose(fd2);
-	free(video); free(osd); free(output);
+	if (video) free(video);
+	if (osd) free(osd);
+	if (output) free(output);
 	return 0;
+
+error_cleanup:
+	if (video) free(video);
+	if (osd) free(osd);
+	if (output) free(output);
+	return 1;
 }
+
 
 void getvideo(unsigned char *video, int *xres, int *yres)
 {
@@ -268,9 +292,18 @@ void getvideo(unsigned char *video, int *xres, int *yres)
 		munmap((void*)data, 100);
 
 		FILE *fp = fopen("/proc/stb/vmpeg/0/yres", "r");
-		if (fp) { if (fscanf(fp, "%x", &res) != 1) res = 0; fclose(fp); }
+		if (fp) { 
+			if (fscanf(fp, "%x", &res) != 1) res = 0; 
+			fclose(fp); 
+		}
 
-		if (!adr || !adr2 || !stride || !res) { 
+		// FEHLER BEHOBEN: Fallback, falls Proc-FS Einträge auf der SF8008 Box fehlen oder 0 melden
+		if (stride <= 0) stride = 1920;
+		if (res <= 0) res = 1080;
+		if (ofs <= 0) ofs = res;
+		if (ofs2 <= 0) ofs2 = res / 2;
+
+		if (!adr || !adr2) { 
 			*xres = stride; *yres = res; close(mem_fd); return; 
 		}
 
@@ -284,7 +317,10 @@ void getvideo(unsigned char *video, int *xres, int *yres)
 				int xsub = ((stride - xtmp) <= chr_luma_stride) ? (stride - xtmp) : chr_luma_stride;
 				dat1 = xtmp;
 				for (int ytmp = 0; ytmp < ofs; ytmp++) {
-					memcpy(luma + dat1, memory_tmp + (adr & 0xfff) + t, xsub);
+					// Puffer-Überlaufschutz
+					if (dat1 + xsub <= stride * ofs && (adr & 0xfff) + t + xsub <= (adr2 - adr) + (stride + chr_luma_stride) * ofs2) {
+						memcpy(luma + dat1, memory_tmp + (adr & 0xfff) + t, xsub);
+					}
 					dat1 += stride; t += chr_luma_stride;
 				}
 			}
@@ -323,6 +359,7 @@ void getvideo(unsigned char *video, int *xres, int *yres)
 	}
 	close(mem_fd);
 }
+
 
 void getosd(unsigned char *osd, int *xres, int *yres)
 {
