@@ -274,91 +274,144 @@ error_cleanup:
 }
 
 
+// Funktions-Prototypen für die HiSilicon System- und Multimedia-APIs
+typedef int            HI_S32;
+typedef unsigned int   HI_U32;
+typedef void           HI_VOID;
+typedef HI_U32         HI_HANDLE;
+
+typedef struct {
+	HI_U32  u32Unk0;
+	HI_U32  u32YPhyAddr;    // Physikalische Adresse Luminanz
+	HI_U32  u32CPhyAddr;    // Physikalische Adresse Chrominanz
+	HI_U32  u32Unk0c;
+	HI_U32  u32YStride;
+	HI_U32  u32CStride;
+	HI_U32  u32Pad1[7];
+	HI_U32  u32Width;
+	HI_U32  u32Height;
+	HI_U32  u32Pad2[7];
+	HI_U32  u32PixelFormat;
+	HI_U32  u32Pad3[64];
+} HI_UNF_VIDEO_FRAME_INFO_S;
+
+typedef HI_S32 (*PFN_HI_SYS_Init)(HI_VOID);
+typedef HI_S32 (*PFN_HI_SYS_DeInit)(HI_VOID);
+typedef HI_S32 (*PFN_HI_UNF_DISP_Init)(HI_VOID);
+typedef HI_S32 (*PFN_HI_UNF_DISP_DeInit)(HI_VOID);
+typedef HI_S32 (*PFN_HI_UNF_DISP_Open)(HI_U32 enDisp);
+typedef HI_S32 (*PFN_HI_UNF_DISP_AcquireSnapshot)(HI_U32 enDisp, HI_UNF_VIDEO_FRAME_INFO_S *pstSnapShot);
+typedef HI_S32 (*PFN_HI_UNF_DISP_ReleaseSnapshot)(HI_U32 enDisp, const HI_UNF_VIDEO_FRAME_INFO_S *pstSnapShot);
+typedef void*  (*PFN_HI_MMZ_Map)(HI_U32 u32PhyAddr, HI_U32 u32Cached);
+typedef HI_S32 (*PFN_HI_MMZ_Unmap)(HI_U32 u32PhyAddr);
+
 void getvideo(unsigned char *video, int *xres, int *yres)
 {
-	int mem_fd, res = 0, stride = 0;
+	*xres = 0;
+	*yres = 0;
 
-	if ((mem_fd = open("/dev/mem", O_RDONLY)) < 0) return;
+	// Dynamisches Laden der HiSilicon SoC Treiber-Bibliotheken
+	void *hisi_lib_common = dlopen("/usr/lib/libhi_common.so", RTLD_LAZY | RTLD_GLOBAL);
+	void *hisi_lib_msp    = dlopen("/usr/lib/libhi_msp.so", RTLD_LAZY | RTLD_GLOBAL);
 
-	if (stb_type == BRCM_GENERIC) {
-		const unsigned char* data = (unsigned char*)mmap(0, 100, PROT_READ, MAP_SHARED, mem_fd, registeroffset);
-		if(data == MAP_FAILED) { close(mem_fd); return; }
-
-		off_t adr = (unsigned int)0 | data[0x37] << 24 | data[0x36] << 16 | data[0x35] << 8;
-		off_t adr2 = (unsigned int)0 | data[chr_luma_register_offset + 3] << 24 | data[chr_luma_register_offset + 2] << 16 | data[chr_luma_register_offset + 1] << 8;
-		stride = data[0x19] << 8 | data[0x18];
-		off_t ofs = data[chr_luma_register_offset + 24] << 4;
-		off_t ofs2 = data[chr_luma_register_offset + 28] << 4;
-		munmap((void*)data, 100);
-
-		FILE *fp = fopen("/proc/stb/vmpeg/0/yres", "r");
-		if (fp) { 
-			if (fscanf(fp, "%x", &res) != 1) res = 0; 
-			fclose(fp); 
-		}
-
-		// FEHLER BEHOBEN: Fallback, falls Proc-FS Einträge auf der SF8008 Box fehlen oder 0 melden
-		if (stride <= 0) stride = 1920;
-		if (res <= 0) res = 1080;
-		if (ofs <= 0) ofs = res;
-		if (ofs2 <= 0) ofs2 = res / 2;
-
-		if (!adr || !adr2) { 
-			*xres = stride; *yres = res; close(mem_fd); return; 
-		}
-
-		unsigned char *luma = (unsigned char *)malloc(stride * ofs);
-		unsigned char *chroma = (unsigned char *)malloc(stride * ofs2);
-		unsigned char *memory_tmp = (unsigned char*)mmap(0, (adr2 - adr) + (stride + chr_luma_stride) * ofs2, PROT_READ, MAP_SHARED, mem_fd, adr);
-		
-		if (memory_tmp != MAP_FAILED && luma && chroma) {
-			int t = 0, dat1 = 0;
-			for (int xtmp = 0; xtmp < stride; xtmp += chr_luma_stride) {
-				int xsub = ((stride - xtmp) <= chr_luma_stride) ? (stride - xtmp) : chr_luma_stride;
-				dat1 = xtmp;
-				for (int ytmp = 0; ytmp < ofs; ytmp++) {
-					// Puffer-Überlaufschutz
-					if (dat1 + xsub <= stride * ofs && (adr & 0xfff) + t + xsub <= (adr2 - adr) + (stride + chr_luma_stride) * ofs2) {
-						memcpy(luma + dat1, memory_tmp + (adr & 0xfff) + t, xsub);
-					}
-					dat1 += stride; t += chr_luma_stride;
-				}
-			}
-			munmap(memory_tmp, (adr2 - adr) + (stride + chr_luma_stride) * ofs2);
-		}
-
-		int rgbstride = stride * 3;
-		if (luma && chroma) {
-			for (int y = 0; y < res / 2; ++y) {
-				int out1 = y * rgbstride * 2;
-				int pos = y * stride * 2;
-				const unsigned char* chroma_p = chroma + (y * stride);
-
-				for (int x = stride; x > 0; x -= 2) {
-					int U = *chroma_p++; int V = *chroma_p++;
-					int RU = yuv2rgbtable_ru[U]; int GU = yuv2rgbtable_gu[U];
-					int GV = yuv2rgbtable_gv[V]; int BV = yuv2rgbtable_bv[V];
-
-					int Y = yuv2rgbtable_y[luma[pos]];
-					video[out1] = CLAMP((Y + RU) >> 16);
-					video[out1 + 1] = CLAMP((Y - GV - GU) >> 16);
-					video[out1 + 2] = CLAMP((Y + BV) >> 16);
-
-					Y = yuv2rgbtable_y[luma[stride + pos]];
-					video[out1 + rgbstride] = CLAMP((Y + RU) >> 16);
-					video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16);
-					video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
-
-					pos++; out1 += 3;
-				}
-			}
-		}
-		*xres = stride; *yres = res;
-		if (luma) free(luma); 
-		if (chroma) free(chroma);
+	if (!hisi_lib_common || !hisi_lib_msp) {
+		// Fallback auf Standard Broadcom-Einlesung, falls keine HiSilicon-Treiber geladen sind
+		stb_type = BRCM_GENERIC;
+		return;
 	}
-	close(mem_fd);
+
+	PFN_HI_SYS_Init pfnSysInit = (PFN_HI_SYS_Init)dlsym(hisi_lib_common, "HI_SYS_Init");
+	PFN_HI_SYS_DeInit pfnSysDeInit = (PFN_HI_SYS_DeInit)dlsym(hisi_lib_common, "HI_SYS_DeInit");
+	PFN_HI_UNF_DISP_Init pfnDispInit = (PFN_HI_UNF_DISP_Init)dlsym(hisi_lib_msp, "HI_UNF_DISP_Init");
+	PFN_HI_UNF_DISP_DeInit pfnDispDeInit = (PFN_HI_UNF_DISP_DeInit)dlsym(hisi_lib_msp, "HI_UNF_DISP_DeInit");
+	PFN_HI_UNF_DISP_Open pfnDispOpen = (PFN_HI_UNF_DISP_Open)dlsym(hisi_lib_msp, "HI_UNF_DISP_Open");
+	PFN_HI_UNF_DISP_AcquireSnapshot pfnAcquire = (PFN_HI_UNF_DISP_AcquireSnapshot)dlsym(hisi_lib_msp, "HI_UNF_DISP_AcquireSnapshot");
+	PFN_HI_UNF_DISP_ReleaseSnapshot pfnRelease = (PFN_HI_UNF_DISP_ReleaseSnapshot)dlsym(hisi_lib_msp, "HI_UNF_DISP_ReleaseSnapshot");
+	
+	// MMZ (Memory Management Zone) Mapping-Funktionen auflösen
+	PFN_HI_MMZ_Map pfnMMZMap = (PFN_HI_MMZ_Map)dlsym(hisi_lib_common, "HI_MMZ_Map");
+	if (!pfnMMZMap) pfnMMZMap = (PFN_HI_MMZ_Map)dlsym(hisi_lib_msp, "HI_MMZ_Map");
+	PFN_HI_MMZ_Unmap pfnMMZUnmap = (PFN_HI_MMZ_Unmap)dlsym(hisi_lib_common, "HI_MMZ_Unmap");
+	if (!pfnMMZUnmap) pfnMMZUnmap = (PFN_HI_MMZ_Unmap)dlsym(hisi_lib_msp, "HI_MMZ_Unmap");
+
+	if (!pfnSysInit || !pfnDispInit || !pfnAcquire || !pfnRelease || !pfnMMZMap || !pfnMMZUnmap) {
+		if (hisi_lib_msp) dlclose(hisi_lib_msp);
+		if (hisi_lib_common) dlclose(hisi_lib_common);
+		return;
+	}
+
+	// Multimedia Hardware-Subsystem initialisieren
+	if (pfnSysInit() != 0) goto close_libs;
+	if (pfnDispInit() != 0) { pfnSysDeInit(); goto close_libs; }
+	if (pfnDispOpen != NULL) pfnDispOpen(1); // DISP1 öffnen
+
+	HI_UNF_VIDEO_FRAME_INFO_S *pFrame = (HI_UNF_VIDEO_FRAME_INFO_S*)calloc(1, 4096);
+	if (!pFrame) goto deinit_disp;
+
+	// Direkten Video-Snapshot aus der Hardware-Engine sichern (Verhindert grüne Pixelsalat-Ausgabe)
+	if (pfnAcquire(1, pFrame) != 0) {
+		free(pFrame);
+		goto deinit_disp;
+	}
+
+	if (pFrame->u32Width && pFrame->u32Height && pFrame->u32YPhyAddr) {
+		unsigned char *y_virt = (unsigned char*)pfnMMZMap(pFrame->u32YPhyAddr, 0);
+		unsigned char *uv_virt = NULL;
+		int mapped_separately = 0;
+
+		if (y_virt) {
+			int w = (int)pFrame->u32Width;
+			int h = (int)pFrame->u32Height;
+			int ystride = (int)pFrame->u32YStride;
+			int cstride = (int)pFrame->u32CStride ? (int)pFrame->u32CStride : ystride;
+
+			// Prüfen, ob Chrominanz im selben Speicherbereich liegt
+			if (pFrame->u32CPhyAddr > pFrame->u32YPhyAddr && (pFrame->u32CPhyAddr - pFrame->u32YPhyAddr) < (64U * 1024U * 1024U)) {
+				uv_virt = y_virt + (pFrame->u32CPhyAddr - pFrame->u32YPhyAddr);
+			} else if (pFrame->u32CPhyAddr) {
+				uv_virt = (unsigned char*)pfnMMZMap(pFrame->u32CPhyAddr, 0);
+				mapped_separately = 1;
+			}
+
+			if (uv_virt) {
+				// Native NV21/YUV-Farbkonvertierung zu internem BGR (Löst das Farbproblem)
+				for (int i = 0; i < h; i++) {
+					for (int j = 0; j < w; j++) {
+						int y_val = y_virt[i * ystride + j] - 16;
+						int v_val = uv_virt[(i / 2) * cstride + (j & ~1)] - 128;
+						int u_val = uv_virt[(i / 2) * cstride + (j & ~1) + 1] - 128;
+
+						int r = CLAMP((298 * y_val + 409 * v_val + 128) >> 8);
+						int g = CLAMP((298 * y_val - 100 * u_val - 208 * v_val + 128) >> 8);
+						int b = CLAMP((298 * y_val + 516 * u_val + 128) >> 8);
+
+						int off = (i * w + j) * 3;
+						video[off + 0] = (unsigned char)b;
+						video[off + 1] = (unsigned char)g;
+						video[off + 2] = (unsigned char)r;
+					}
+				}
+				*xres = w;
+				*yres = h;
+			}
+
+			if (mapped_separately && pFrame->u32CPhyAddr) pfnMMZUnmap(pFrame->u32CPhyAddr);
+			pfnMMZUnmap(pFrame->u32YPhyAddr);
+		}
+	}
+
+	pfnRelease(1, pFrame);
+	free(pFrame);
+
+deinit_disp:
+	if (pfnDispDeInit) pfnDispDeInit();
+	if (pfnSysDeInit) pfnSysDeInit();
+
+close_libs:
+	if (hisi_lib_msp) dlclose(hisi_lib_msp);
+	if (hisi_lib_common) dlclose(hisi_lib_common);
 }
+
 
 
 void getosd(unsigned char *osd, int *xres, int *yres)
