@@ -311,91 +311,63 @@ void getvideo(unsigned char *video, int *xres, int *yres)
 	*xres = 0;
 	*yres = 0;
 
-	// 1. VERSUCH: HiSilicon Hardware-Weg (Dynamisches Laden)
-	void *hisi_lib_common = dlopen("/usr/lib/libhi_common.so", RTLD_LAZY | RTLD_GLOBAL);
-	void *hisi_lib_msp    = dlopen("/usr/lib/libhi_msp.so", RTLD_LAZY | RTLD_GLOBAL);
+	// 1. PFAD: Reiner, lokaler HiSilicon Hardware-Weg über proc/sys (SF8008-optimiert)
+	// Verhindert das 0 KB Problem und blockiert nicht mit Enigma2
+	FILE *f_hisi_y = fopen("/sys/class/video/frame_width", "r");
+	if (f_hisi_y) {
+		int w = 0, h = 0;
+		if (fscanf(f_hisi_y, "%d", &w) == 1) {
+			FILE *f_hisi_h = fopen("/sys/class/video/frame_height", "r");
+			if (f_hisi_h) {
+				if (fscanf(f_hisi_h, "%d", &h) == 1 && w > 0 && h > 0) {
+					
+					// HiSilicon Boxen spiegeln das decodierte YUV-Bild im Video-Device
+					int fd_cap = open("/dev/amvideocap0", O_RDONLY);
+					if (fd_cap < 0) fd_cap = open("/dev/video0", O_RDONLY);
+					
+					if (fd_cap >= 0) {
+						size_t yuv_size = w * h * 3 / 2; // YUV420p Planar Größe
+						unsigned char *yuv_buf = (unsigned char *)malloc(yuv_size);
+						
+						if (yuv_buf && read(fd_cap, yuv_buf, yuv_size) == (ssize_t)yuv_size) {
+							// Mathematisch korrekte, pfeilschnelle YUV420p -> BGR Konvertierung
+							unsigned char *y_plane = yuv_buf;
+							unsigned char *u_plane = yuv_buf + (w * h);
+							unsigned char *v_plane = yuv_buf + (w * h) + (w * h / 4);
 
-	if (hisi_lib_common && hisi_lib_msp) {
-		PFN_HI_SYS_Init pfnSysInit = (PFN_HI_SYS_Init)dlsym(hisi_lib_common, "HI_SYS_Init");
-		PFN_HI_SYS_DeInit pfnSysDeInit = (PFN_HI_SYS_DeInit)dlsym(hisi_lib_common, "HI_SYS_DeInit");
-		PFN_HI_UNF_DISP_Init pfnDispInit = (PFN_HI_UNF_DISP_Init)dlsym(hisi_lib_msp, "HI_UNF_DISP_Init");
-		PFN_HI_UNF_DISP_DeInit pfnDispDeInit = (PFN_HI_UNF_DISP_DeInit)dlsym(hisi_lib_msp, "HI_UNF_DISP_DeInit");
-		PFN_HI_UNF_DISP_Open pfnDispOpen = (PFN_HI_UNF_DISP_Open)dlsym(hisi_lib_msp, "HI_UNF_DISP_Open");
-		PFN_HI_UNF_DISP_AcquireSnapshot pfnAcquire = (PFN_HI_UNF_DISP_AcquireSnapshot)dlsym(hisi_lib_msp, "HI_UNF_DISP_AcquireSnapshot");
-		PFN_HI_UNF_DISP_ReleaseSnapshot pfnRelease = (PFN_HI_UNF_DISP_ReleaseSnapshot)dlsym(hisi_lib_msp, "HI_UNF_DISP_ReleaseSnapshot");
-		
-		PFN_HI_MMZ_Map pfnMMZMap = (PFN_HI_MMZ_Map)dlsym(hisi_lib_common, "HI_MMZ_Map");
-		if (!pfnMMZMap) pfnMMZMap = (PFN_HI_MMZ_Map)dlsym(hisi_lib_msp, "HI_MMZ_Map");
-		PFN_HI_MMZ_Unmap pfnMMZUnmap = (PFN_HI_MMZ_Unmap)dlsym(hisi_lib_common, "HI_MMZ_Unmap");
-		if (!pfnMMZUnmap) pfnMMZUnmap = (PFN_HI_MMZ_Unmap)dlsym(hisi_lib_msp, "HI_MMZ_Unmap");
+							for (int y = 0; y < h; y++) {
+								for (int x = 0; x < w; x++) {
+									int y_val = y_plane[y * w + x] - 16;
+									int u_val = u_plane[(y / 2) * (w / 2) + (x / 2)] - 128;
+									int v_val = v_plane[(y / 2) * (w / 2) + (x / 2)] - 128;
 
-		if (pfnSysInit && pfnDispInit && pfnAcquire && pfnRelease && pfnMMZMap && pfnMMZUnmap) {
-			if (pfnSysInit() == 0) {
-				if (pfnDispInit() == 0) {
-					if (pfnDispOpen != NULL) pfnDispOpen(1);
+									int r = CLAMP((298 * y_val + 409 * v_val + 128) >> 8);
+									int g = CLAMP((298 * y_val - 100 * u_val - 208 * v_val + 128) >> 8);
+									int b = CLAMP((298 * y_val + 516 * u_val + 128) >> 8);
 
-					HI_UNF_VIDEO_FRAME_INFO_S *pFrame = (HI_UNF_VIDEO_FRAME_INFO_S*)calloc(1, 4096);
-					if (pFrame) {
-						if (pfnAcquire(1, pFrame) == 0) {
-							if (pFrame->u32Width && pFrame->u32Height && pFrame->u32YPhyAddr) {
-								unsigned char *y_virt = (unsigned char*)pfnMMZMap(pFrame->u32YPhyAddr, 0);
-								unsigned char *uv_virt = NULL;
-								int mapped_separately = 0;
-
-								if (y_virt) {
-									int w = (int)pFrame->u32Width;
-									int h = (int)pFrame->u32Height;
-									int ystride = (int)pFrame->u32YStride;
-									int cstride = (int)pFrame->u32CStride ? (int)pFrame->u32CStride : ystride;
-
-									if (pFrame->u32CPhyAddr > pFrame->u32YPhyAddr && (pFrame->u32CPhyAddr - pFrame->u32YPhyAddr) < (64U * 1024U * 1024U)) {
-										uv_virt = y_virt + (pFrame->u32CPhyAddr - pFrame->u32YPhyAddr);
-									} else if (pFrame->u32CPhyAddr) {
-										uv_virt = (unsigned char*)pfnMMZMap(pFrame->u32CPhyAddr, 0);
-										mapped_separately = 1;
-									}
-
-									if (uv_virt) {
-										for (int i = 0; i < h; i++) {
-											for (int j = 0; j < w; j++) {
-												int y_val = y_virt[i * ystride + j] - 16;
-												int v_val = uv_virt[(i / 2) * cstride + (j & ~1)] - 128;
-												int u_val = uv_virt[(i / 2) * cstride + (j & ~1) + 1] - 128;
-
-												int r = CLAMP((298 * y_val + 409 * v_val + 128) >> 8);
-												int g = CLAMP((298 * y_val - 100 * u_val - 208 * v_val + 128) >> 8);
-												int b = CLAMP((298 * y_val + 516 * u_val + 128) >> 8);
-
-												int off = (i * w + j) * 3;
-												video[off + 0] = (unsigned char)b;
-												video[off + 1] = (unsigned char)g;
-												video[off + 2] = (unsigned char)r;
-											}
-										}
-										*xres = w;
-										*yres = h;
-									}
-									if (mapped_separately && pFrame->u32CPhyAddr) pfnMMZUnmap(pFrame->u32CPhyAddr);
-									pfnMMZUnmap(pFrame->u32YPhyAddr);
+									int off = (y * w + x) * 3;
+									video[off + 0] = (unsigned char)b;
+									video[off + 1] = (unsigned char)g;
+									video[off + 2] = (unsigned char)r;
 								}
 							}
-							pfnRelease(1, pFrame);
+							*xres = w;
+							*yres = h;
 						}
-						free(pFrame);
+						if (yuv_buf) free(yuv_buf);
+						close(fd_cap);
 					}
-					pfnDispDeInit();
 				}
-				pfnSysDeInit();
+				fclose(f_hisi_h);
 			}
 		}
-		dlclose(hisi_lib_msp);
-		dlclose(hisi_lib_common);
+		fclose(f_hisi_y);
 		
-		// Wenn HiSilicon erfolgreich eingelesen hat, hier beenden
+		// Wenn der lokale HiSilicon-Weg erfolgreich war, beenden wir hier sofort
 		if (*xres > 0 && *yres > 0) return;
 	}
 
-	// 2. FALLBACK-PFAD: Traditionelles Einlesen für Broadcom / MIPS Boxen
+	// 2. PFAD: Traditioneller Fallback für Broadcom / MIPS Boxen (VU+, Dreambox)
 	if ((mem_fd = open("/dev/mem", O_RDONLY)) < 0) return;
 
 	stb_type = BRCM_GENERIC;
@@ -478,6 +450,7 @@ void getvideo(unsigned char *video, int *xres, int *yres)
 	if (chroma) free(chroma);
 	close(mem_fd);
 }
+
 
 
 
