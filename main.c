@@ -441,3 +441,215 @@ int main(int argc, char **argv)
 	return 0;
 }
 
+static void hisi_preload_one(const char *name)
+{
+	void *h = dlopen(name, RTLD_LAZY | RTLD_GLOBAL);
+	(void)h;
+}
+
+static void hisi_preload_runtime_libs(void)
+{
+	static const char *libs[] = {
+		"libjpeg.so", "libjpeg.so.8", "libjpeg.so.62", "libjpeg9b.so",
+		"/usr/lib/libjpeg.so", "/usr/lib/libjpeg.so.8", "/usr/lib/libjpeg.so.62", "/usr/lib/libjpeg9b.so",
+		"libz.so.1", "libpng16.so.16", "libatomic.so.1",
+		"/usr/lib/libhi_securec.so", "/usr/lib/libhigo.so", "/usr/lib/libhigoadp.so",
+		"/usr/lib/libhi_so.so", "/usr/lib/libhi_ttx.so", "/usr/lib/libhi_cc.so",
+		"/usr/lib/libhi_subtitle.so", NULL
+	};
+	int i;
+	for (i = 0; libs[i]; i++) hisi_preload_one(libs[i]);
+}
+
+static int hisi_open_libs(void)
+{
+	if (hisi_lib_common && hisi_lib_msp) return 0;
+	hisi_preload_runtime_libs();
+	hisi_lib_common = dlopen("/usr/lib/libhi_common.so", RTLD_NOW | RTLD_GLOBAL);
+	if (!hisi_lib_common) return -1;
+	hisi_lib_msp = dlopen("/usr/lib/libhi_msp.so", RTLD_NOW | RTLD_GLOBAL);
+	if (!hisi_lib_msp) return -1;
+	return 0;
+}
+
+void getvideo_hisi(unsigned char *video, int *xres, int *yres)
+{
+	HI_S32 ret;
+	*xres = 0; *yres = 0;
+	if (hisi_open_libs() < 0) return;
+
+	PFN_HI_SYS_Init pfnSysInit = (PFN_HI_SYS_Init)dlsym(hisi_lib_common, "HI_SYS_Init");
+	PFN_HI_SYS_DeInit pfnSysDeInit = (PFN_HI_SYS_DeInit)dlsym(hisi_lib_common, "HI_SYS_DeInit");
+	PFN_HI_UNF_DISP_Init pfnDispInit = (PFN_HI_UNF_DISP_Init)dlsym(hisi_lib_msp, "HI_UNF_DISP_Init");
+	PFN_HI_UNF_DISP_DeInit pfnDispDeInit = (PFN_HI_UNF_DISP_DeInit)dlsym(hisi_lib_msp, "HI_UNF_DISP_DeInit");
+	PFN_HI_UNF_DISP_Open pfnDispOpen = (PFN_HI_UNF_DISP_Open)dlsym(hisi_lib_msp, "HI_UNF_DISP_Open");
+	PFN_HI_UNF_DISP_AcquireSnapshot pfnAcquire = (PFN_HI_UNF_DISP_AcquireSnapshot)dlsym(hisi_lib_msp, "HI_UNF_DISP_AcquireSnapshot");
+	PFN_HI_UNF_DISP_ReleaseSnapshot pfnRelease = (PFN_HI_UNF_DISP_ReleaseSnapshot)dlsym(hisi_lib_msp, "HI_UNF_DISP_ReleaseSnapshot");
+	
+	PFN_HI_MMZ_Map pfnMMZMap = (PFN_HI_MMZ_Map)dlsym(hisi_lib_common, "HI_MMZ_Map");
+	if (!pfnMMZMap) pfnMMZMap = (PFN_HI_MMZ_Map)dlsym(hisi_lib_msp, "HI_MMZ_Map");
+	PFN_HI_MMZ_Unmap pfnMMZUnmap = (PFN_HI_MMZ_Unmap)dlsym(hisi_lib_common, "HI_MMZ_Unmap");
+	if (!pfnMMZUnmap) pfnMMZUnmap = (PFN_HI_MMZ_Unmap)dlsym(hisi_lib_msp, "HI_MMZ_Unmap");
+
+	if (!pfnSysInit || !pfnDispInit || !pfnAcquire || !pfnRelease || !pfnMMZMap || !pfnMMZUnmap) return;
+
+	pfnSysInit(); pfnDispInit();
+	if (pfnDispOpen != NULL) pfnDispOpen(1);
+
+	HI_UNF_VIDEO_FRAME_INFO_S *pFrame = (HI_UNF_VIDEO_FRAME_INFO_S*)calloc(1, 4096);
+	if (!pFrame) return;
+
+	ret = pfnAcquire(1, pFrame);
+	if (ret != 0) { free(pFrame); return; }
+
+	if (pFrame->u32Width && pFrame->u32Height && pFrame->u32YPhyAddr && pFrame->u32CPhyAddr) {
+		unsigned char *y_virt = (unsigned char*)pfnMMZMap(pFrame->u32YPhyAddr, 0);
+		unsigned char *uv_virt = NULL;
+		int mapped_separately = 0;
+
+		if (y_virt) {
+			int w = (int)pFrame->u32Width; int h = (int)pFrame->u32Height;
+			int ystride = (int)pFrame->u32YStride; int cstride = (int)pFrame->u32CStride;
+
+			if (pFrame->u32CPhyAddr > pFrame->u32YPhyAddr) uv_virt = y_virt + (pFrame->u32CPhyAddr - pFrame->u32YPhyAddr);
+			else { uv_virt = (unsigned char*)pfnMMZMap(pFrame->u32CPhyAddr, 0); mapped_separately = 1; }
+
+			if (uv_virt) {
+				for (int i = 0; i < h; i++) {
+					for (int j = 0; j < w; j++) {
+						int y = y_virt[i * ystride + j] - 16;
+						int r = CLAMP((298 * y + 409 * (uv_virt[(i / 2) * cstride + (j & ~1)] - 128) + 128) >> 8);
+						int g = CLAMP((298 * y - 100 * (uv_virt[(i / 2) * cstride + (j & ~1) + 1] - 128) - 208 * (uv_virt[(i / 2) * cstride + (j & ~1)] - 128) + 128) >> 8);
+						int b = CLAMP((298 * y + 516 * (uv_virt[(i / 2) * cstride + (j & ~1) + 1] - 128) + 128) >> 8);
+						int off = (i * w + j) * 3;
+						video[off + 0] = (unsigned char)b; video[off + 1] = (unsigned char)g; video[off + 2] = (unsigned char)r;
+					}
+				}
+				*xres = w; *yres = h;
+			}
+			if (mapped_separately) pfnMMZUnmap(pFrame->u32CPhyAddr);
+			pfnMMZUnmap(pFrame->u32YPhyAddr);
+		}
+	}
+	pfnRelease(1, pFrame); free(pFrame); pfnDispDeInit(); pfnSysDeInit();
+}
+
+void getvideo2(unsigned char *video, int *xres, int *yres)
+{
+	char dev_buf[64]; sprintf(dev_buf, "/dev/dvb/adapter0/video%d", video_dev);
+	int fd_video = open(dev_buf, O_RDONLY);
+	if (fd_video < 0) return;
+	ssize_t r = read(fd_video, video, 1920 * 1080 * 3); (void)r; close(fd_video);
+	*xres = 1920; *yres = 1080;
+}
+
+void getvideo(unsigned char *video, int *xres, int *yres)
+{
+	int mem_fd, stride = 0, res = 0;
+	unsigned char *luma = NULL, *chroma = NULL, *memory_tmp = NULL;
+	char res_buf[256];
+
+	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC)) < 0) return;
+	const unsigned char* data = (unsigned char*)mmap(0, 100, PROT_READ, MAP_SHARED, mem_fd, registeroffset);
+	if(data == MAP_FAILED) { close(mem_fd); return; }
+
+	off_t adr = (unsigned int)0 | data[0x37] << 24 | data[0x36] << 16 | data[0x35] << 8;
+	off_t adr2 = (unsigned int)0 | data[chr_luma_register_offset + 3] << 24 | data[chr_luma_register_offset + 2] << 16 | data[chr_luma_register_offset + 1] << 8;
+	stride = data[0x19] << 8 | data[0x18];
+	off_t ofs = data[chr_luma_register_offset + 24] << 4; off_t ofs2 = data[chr_luma_register_offset + 28] << 4;
+	munmap((void*)data, 100);
+
+	FILE *fp = fopen("/proc/stb/vmpeg/0/yres", "r");
+	if(fp) { while (fgets(res_buf, sizeof(res_buf), fp)) sscanf(res_buf, "%x", &res); fclose(fp); }
+	if (!adr || !adr2) { *xres = stride; *yres = res; close(mem_fd); return; }
+
+	luma = (unsigned char *)malloc(stride * ofs); chroma = (unsigned char *)malloc(stride * ofs2);
+	memory_tmp = (unsigned char*)mmap(0, (adr2 - adr) + (stride + chr_luma_stride) * ofs2, PROT_READ, MAP_SHARED, mem_fd, adr);
+
+	if (memory_tmp != MAP_FAILED) {
+		int t = 0, dat1 = 0;
+		for (int xtmp = 0; xtmp < stride; xtmp += chr_luma_stride) {
+			int xsub = ((stride - xtmp) <= chr_luma_stride) ? (stride - xtmp) : chr_luma_stride;
+			dat1 = xtmp;
+			for (int ytmp = 0; ytmp < ofs; ytmp++) { memcpy(luma + dat1, memory_tmp + (adr & 0xfff) + t, xsub); dat1 += stride; t += chr_luma_stride; }
+		}
+		t = 0;
+		for (int xtmp = 0; xtmp < stride; xtmp += chr_luma_stride) {
+			int xsub = ((stride - xtmp) <= chr_luma_stride) ? (stride - xtmp) : chr_luma_stride;
+			dat1 = xtmp;
+			for (int ytmp = 0; ytmp < ofs2; ytmp++) { memcpy(chroma + dat1, memory_tmp + (adr & 0xfff) + (adr2 - adr) + t, xsub); dat1 += stride; t += chr_luma_stride; }
+		}
+		munmap(memory_tmp, (adr2 - adr) + (stride + chr_luma_stride) * ofs2);
+	}
+
+	int rgbstride = stride * 3;
+	for (int y = 0; y < res / 2; ++y) {
+		int out1 = y * rgbstride * 2; int pos = y * stride * 2;
+		const unsigned char* chroma_p = chroma + (y * stride);
+		for (int x = stride; x != 0; x -= 2) {
+			int U = *chroma_p++; int V = *chroma_p++;
+			int RU = yuv2rgbtable_ru[U]; int GU = yuv2rgbtable_gu[U]; int GV = yuv2rgbtable_gv[V]; int BV = yuv2rgbtable_bv[V];
+			if (stb_type == XILLEON) { SWAP(RU, BV); }
+
+			int Y = yuv2rgbtable_y[luma[pos]];
+			video[out1] = CLAMP((Y + RU) >> 16); video[out1 + 1] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2] = CLAMP((Y + BV) >> 16);
+			Y = yuv2rgbtable_y[luma[stride + pos]];
+			video[out1 + rgbstride] = CLAMP((Y + RU) >> 16); video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
+			pos++; out1 += 3; Y = yuv2rgbtable_y[luma[pos]];
+			video[out1] = CLAMP((Y + RU) >> 16); video[out1 + 1] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2] = CLAMP((Y + BV) >> 16);
+			Y = yuv2rgbtable_y[luma[stride + pos]];
+			video[out1 + rgbstride] = CLAMP((Y + RU) >> 16); video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
+			out1 += 3; pos++;
+		}
+	}
+	*xres = stride; *yres = res; free(luma); free(chroma); close(mem_fd);
+}
+
+void getosd(unsigned char *osd, int *xres, int *yres)
+{
+	struct fb_fix_screeninfo fix_screeninfo; struct fb_var_screeninfo var_screeninfo;
+	int fb = open("/dev/fb0", O_RDONLY);
+	if (fb == -1) fb = open("/dev/fb/0", O_RDONLY);
+	if (fb == -1) return;
+
+	if (ioctl(fb, FBIOGET_FSCREENINFO, &fix_screeninfo) == -1 || ioctl(fb, FBIOGET_VSCREENINFO, &var_screeninfo) == -1) { close(fb); return; }
+	unsigned char *lfb = (unsigned char*)mmap(0, fix_screeninfo.smem_len, PROT_READ, MAP_SHARED, fb, 0);
+	if (lfb == MAP_FAILED) { close(fb); return; }
+
+	if (var_screeninfo.bits_per_pixel == 32) {
+		for (unsigned int y = 0; y < var_screeninfo.yres; y++) {
+			memcpy(osd + (y * var_screeninfo.xres * 4), lfb + (y * fix_screeninfo.line_length), var_screeninfo.xres * 4);
+		}
+		*xres = var_screeninfo.xres; *yres = var_screeninfo.yres;
+	}
+	munmap(lfb, fix_screeninfo.smem_len); close(fb);
+}
+
+void fast_resize(const unsigned char *source, unsigned char *dest, int xsource, int ysource, int xdest, int ydest, int colors)
+{
+	int x_ratio = (int)((xsource << 16) / xdest); int y_ratio = (int)((ysource << 16) / ydest);
+	for (int i = 0; i < ydest; i++) {
+		int y2_xsource = ((i * y_ratio) >> 16) * xsource; int i_xdest = i * xdest;
+		for (int j = 0; j < xdest; j++) {
+			int x2 = ((j * x_ratio) >> 16);
+			int y2_x2_colors = (y2_xsource + x2) * colors; int i_x_colors = (i_xdest + j) * colors;
+			for (int c = 0; c < colors; c++) dest[i_x_colors + c] = source[y2_x2_colors + c];
+		}
+	}
+}
+
+void combine(unsigned char *output, const unsigned char *video, const unsigned char *osd, int vleft, int vtop, int vwidth, int vheight, int xres, int yres)
+{
+	for (int y = 0; y < yres; y++) {
+		int pos1 = y * xres * 4; int vpos1 = y * xres * 3;
+		for (int x = 0; x < xres; x++) {
+			int apos = pos1 + 3; int a2 = 0xFF - osd[apos]; int pixel = (y * xres + x) * 3;
+			output[vpos1++] = ((video[pixel + 0] * a2) + (osd[pos1++] * osd[apos])) >> 8;
+			output[vpos1++] = ((video[pixel + 1] * a2) + (osd[pos1++] * osd[apos])) >> 8;
+			output[vpos1++] = ((video[pixel + 2] * a2) + (osd[pos1++] * osd[apos])) >> 8;
+			pos1++;
+		}
+	}
+}
+
+
