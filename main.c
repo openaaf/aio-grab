@@ -58,7 +58,6 @@ static const int yuv2rgbtable_bv[256] = {
 0xFF33A280, 0xFF353B3B, 0xFF36D3F6, 0xFF386CB1, 0xFF3A056C, 0xFF3B9E27, 0xFF3D36E2, 0xFF3ECF9D, 0xFF406858, 0xFF420113, 0xFF4399CE, 0xFF453289, 0xFF46CB44, 0xFF4863FF, 0xFF49FCBA, 0xFF4B9575, 0xFF4D2E30, 0xFF4EC6EB, 0xFF505FA6, 0xFF51F861, 0xFF53911C, 0xFF5529D7, 0xFF56C292, 0xFF585B4D, 0xFF59F408, 0xFF5B8CC3, 0xFF5D257E, 0xFF5EBE39, 0xFF6056F4, 0xFF61EFAF, 0xFF63886A, 0xFF652125, 0xFF66B9E0, 0xFF68529B, 0xFF69EB56, 0xFF6B8411, 0xFF6D1CCC, 0xFF6EB587, 0xFF704E42, 0xFF71E6FD, 0xFF737FB8, 0xFF751873, 0xFF76B12E, 0xFF7849E9, 0xFF79E2A4, 0xFF7B7B5F, 0xFF7D141A, 0xFF7EACD5, 0xFF804590, 0xFF81DE4B, 0xFF837706, 0xFF850FC1, 0xFF86A87C, 0xFF884137, 0xFF89D9F2, 0xFF8B72AD, 0xFF8D0B68, 0xFF8EA423, 0xFF903CDE, 0xFF91D599, 0xFF936E54, 0xFF95070F, 0xFF969FCA, 0xFF983885, 0xFF99D140, 0xFF9B69FB, 0xFF9D02B6, 0xFF9E9B71, 0xFFA0342C, 0xFFA1CCE7, 0xFFA365A2, 0xFFA4FE5D, 0xFFA69718, 0xFFA82FD3, 0xFFA9C88E, 0xFFAB6149, 0xFFACFA04, 0xFFAE92BF, 0xFFB02B7A, 0xFFB1C435, 0xFFB35CF0, 0xFFB4F5AB, 0xB68E66, 0xB82721, 0xB9BFDC, 0xBB5897, 0xBCF152, 0xBE8A0D, 0xC0202E, 0xC1BB83, 0xC3543E, 0xC4ECF9, 0xC685B4, 0xC81E6F, 0xC9B72A, 0xCB4FE5, 0x00CCE8A0, 0xCE815B, 0xD01A16, 0xD1B2D1, 0xD34B8C, 0xD4E447, 0xD67D02, 0xD815BD, 0xD9AE78, 0xDB4733, 0xDCDFEE, 0xDE78A9, 0xE01164, 0xE1AA1F, 0xE342DA, 0xE4DB95, 0xE67450, 0xE80D0B, 0xE9A5C6, 0xEB3E81, 0xECD73C, 0xEE6FF7, 0xF008B2, 0xF1A16D, 0xF33A28, 0xF4D2E3, 0xF66B9E, 0xF80459, 0xF99D14, 0xFB35CF, 0xFCCE8A, 0xFE6745, 0x0, 0x198BB, 0x33176, 0x4CA31, 0x662EC, 0x7FBA7, 0x99462, 0xB2D1D, 0xCC5D8, 0xE5E93, 0xFF74E, 0x119009, 0x1328C4, 0x14C17F, 0x165A3A, 0x17F2F5, 0x198BB0, 0x1B246B, 0x1CBD26, 0x1E55E1, 0x1FEE9C, 0x218757, 0x232012, 0x24B8CD, 0x265188, 0x27EA43, 0x2982FE, 0x2B1BB9, 0x2CB474, 0x2E4D2F, 0x2FE5EA, 0x317EA5, 0x331760, 0x34B01B, 0x3648D6, 0x37E191, 0x397A4C, 0x3B1307, 0x3CABC2, 0x3E447D, 0x3FDD38, 0x4175F3, 0x430EAE, 0x44A769, 0x464024, 0x47D8DF, 0x49719A, 0x4B0A55, 0x4CA310, 0x4E3BCB, 0x4FD486, 0x516D41, 0x5305FC, 0x549EB7, 0x563772, 0x57D02D, 0x5968E8, 0x5B01A3, 0x5C9A5E, 0x5E3319, 0x5FCBD4, 0x61648F, 0x62FD4A, 0x649605, 0x662EC0, 0x67C77B, 0x696036, 0x6AF8F1, 0x6C91AC, 0x6E2A67, 0x6FC322, 0x715BDD, 0x72F498, 0x748D53, 0x76260E, 0x77BEC9, 0x795784, 0x7AF03F, 0x7C88FA, 0x7E21B5, 0x7FBA70, 0x81532B, 0x82EBE6, 0x8484A1, 0x861D5C, 0x87B617, 0x894ED2, 0x8AE78D, 0x8C8048, 0x8E1903, 0x8FB1BE, 0x914A79, 0x92E334, 0x947BEF, 0x9614AA, 0x97AD65, 0x994620, 0x9ADEDB, 0x9C7796, 0x9E1051, 0x9FA90C, 0xA141C7, 0xA2DA82, 0xA4733D, 0xA60BF8, 0xA7A4B3, 0xA93D6E, 0xAAD629, 0xAC6EE4, 0xAE079F, 0xAFA05A, 0xB13915, 0xB2D1D0, 0xB46A8B, 0xB60346, 0xB79C01, 0xB934BC, 0xBACD77, 0xBC6632, 0xBDFEED, 0xBF97A8, 0xC13063, 0xC2C91E, 0xC461D9, 0xC5FA94, 0xC7934F, 0xC92C0A, 0xCAC4C5
 };
 
-
 typedef int            HI_S32;
 typedef unsigned int   HI_U32;
 typedef void           HI_VOID;
@@ -128,12 +127,10 @@ int readIntFromFile(const char *path, int base, int *out)
 	return 0;
 }
 
-
-
 int main(int argc, char **argv)
 {
 	int xres_v = 0, yres_v = 0, xres_o = 0, yres_o = 0, xres = 0, yres = 0, aspect = 1;
-	int c, osd_only = 0, video_only = 0, use_png = 0, use_jpg = 0, jpg_quality = 50;
+	int c, osd_only = 0, video_only = 0, width = 0, use_png = 0, use_jpg = 0, jpg_quality = 50;
 	int to_stdout = 0, req_width = 0, req_height = 0;
 
 	int dst_left = 0, dst_top = 0, dst_width = 0, dst_height = 0;
@@ -282,9 +279,11 @@ int main(int argc, char **argv)
 			getvideo(video, &xres_v, &yres_v);
 	}
 
+	// Korrektur für den Standalone-Kombiner ohne E2-Webif-Kopplung
 	if (osd_only || hisi_composited_all || (xres_v <= 0 || yres_v <= 0)) {
 		xres = xres_o ? xres_o : xres_v; yres = yres_o ? yres_o : yres_v;
-		if (hisi_composited_all) memcpy(output, video, xres * yres * 3);
+		if (xres <= 0) { xres = 1920; yres = 1080; } // Sichere Standardwerte erpfeilen
+		if (hisi_composited_all && xres_v > 0) memcpy(output, video, xres * yres * 3);
 		else {
 			for(int i = 0; i < xres * yres; ++i) {
 				output[i*3+0] = osd[i*4+0]; output[i*3+1] = osd[i*4+1]; output[i*3+2] = osd[i*4+2];
@@ -480,134 +479,68 @@ void getvideo(unsigned char *video, int *xres, int *yres)
 	int mem_fd, stride = 0, res = 0;
 	unsigned char *luma = NULL, *chroma = NULL, *memory_tmp = NULL;
 	char res_buf[256];
-	*xres = 0; *yres = 0;
 
-	// 1. HARDWARE-PFAD: Direkter HiSilicon-Decoder-Zugriff über das Linux-System (SF8008 Fix)
-	// Das umgeht die Blockade der libhi_msp.so und verhindert das 15KB "Schwarz-Bild"-Problem
-	FILE *f_width = fopen("/sys/class/video/frame_width", "r");
-	if (f_width) {
-		int w = 0, h = 0;
-		if (fscanf(f_width, "%d", &w) == 1) {
-			FILE *f_height = fopen("/sys/class/video/frame_height", "r");
-			if (f_height) {
-				if (fscanf(f_height, "%d", &h) == 1 && w > 0 && h > 0) {
-					
-					// Das decodierte Video-Bild direkt aus dem Kernel-Capture-Device lesen
-					int fd_cap = open("/dev/amvideocap0", O_RDONLY);
-					if (fd_cap < 0) fd_cap = open("/dev/video0", O_RDONLY);
-					
-					if (fd_cap >= 0) {
-						size_t yuv_size = w * h * 3 / 2; // YUV420p Planar Größe
-						unsigned char *yuv_buf = (unsigned char *)malloc(yuv_size);
-						
-						if (yuv_buf && read(fd_cap, yuv_buf, yuv_size) == (ssize_t)yuv_size) {
-							unsigned char *y_plane = yuv_buf;
-							unsigned char *u_plane = yuv_buf + (w * h);
-							unsigned char *v_plane = yuv_buf + (w * h) + (w * h / 4);
-
-							// Schnelle, mathematisch exakte YUV420p -> BGR Konvertierung für HiSilicon
-							for (int y = 0; y < h; y++) {
-								for (int x = 0; x < w; x++) {
-									int y_val = y_plane[y * w + x] - 16;
-									int u_val = u_plane[(y / 2) * (w / 2) + (x / 2)] - 128;
-									int v_val = v_plane[(y / 2) * (w / 2) + (x / 2)] - 128;
-
-									int r = CLAMP((298 * y_val + 409 * v_val + 128) >> 8);
-									int g = CLAMP((298 * y_val - 100 * u_val - 208 * v_val + 128) >> 8);
-									int b = CLAMP((298 * y_val + 516 * u_val + 128) >> 8);
-
-									int off = (y * w + x) * 3;
-									video[off + 0] = (unsigned char)b; // B
-									video[off + 1] = (unsigned char)g; // G
-									video[off + 2] = (unsigned char)r; // R
-								}
-							}
-							*xres = w; *yres = h;
-						}
-						if (yuv_buf) free(yuv_buf);
-						close(fd_cap);
-					}
-				}
-				fclose(f_height);
-			}
-		}
-		fclose(f_width);
-		
-		// Wenn der direkte Kernel-Weg erfolgreich war, beenden wir hier sofort sauber
-		if (*xres > 0 && *yres > 0) return;
-	}
-
-	// 2. HARDWARE-PFAD: Originaler Fallback für Broadcom / MIPS Boxen (VU+, Dreambox)
 	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC)) < 0) return;
-
 	const unsigned char* data = (unsigned char*)mmap(0, 100, PROT_READ, MAP_SHARED, mem_fd, registeroffset);
 	if(data == MAP_FAILED) { close(mem_fd); return; }
 
 	off_t adr = (unsigned int)0 | data[0x37] << 24 | data[0x36] << 16 | data[0x35] << 8;
 	off_t adr2 = (unsigned int)0 | data[chr_luma_register_offset + 3] << 24 | data[chr_luma_register_offset + 2] << 16 | data[chr_luma_register_offset + 1] << 8;
 	stride = data[0x19] << 8 | data[0x18];
-	off_t ofs = data[chr_luma_register_offset + 24] << 4;
-	off_t ofs2 = data[chr_luma_register_offset + 28] << 4;
+	off_t ofs = data[chr_luma_register_offset + 24] << 4; off_t ofs2 = data[chr_luma_register_offset + 28] << 4;
 	munmap((void*)data, 100);
 
 	FILE *fp = fopen("/proc/stb/vmpeg/0/yres", "r");
 	if(fp) { while (fgets(res_buf, sizeof(res_buf), fp)) sscanf(res_buf, "%x", &res); fclose(fp); }
 	if (!adr || !adr2) { *xres = stride; *yres = res; close(mem_fd); return; }
 
-	luma = (unsigned char *)malloc(stride * ofs);
-	chroma = (unsigned char *)malloc(stride * ofs2);
+	luma = (unsigned char *)malloc(stride * ofs); chroma = (unsigned char *)malloc(stride * ofs2);
 	memory_tmp = (unsigned char*)mmap(0, (adr2 - adr) + (stride + chr_luma_stride) * ofs2, PROT_READ, MAP_SHARED, mem_fd, adr);
 
-	if (memory_tmp != MAP_FAILED && luma && chroma) {
+	if (memory_tmp != MAP_FAILED) {
 		int t = 0, dat1 = 0;
 		for (int xtmp = 0; xtmp < stride; xtmp += chr_luma_stride) {
 			int xsub = ((stride - xtmp) <= chr_luma_stride) ? (stride - xtmp) : chr_luma_stride;
 			dat1 = xtmp;
-			for (int ytmp = 0; ytmp < ofs; ytmp++) {
-				memcpy(luma + dat1, memory_tmp + (adr & 0xfff) + t, xsub);
-				dat1 += stride; t += chr_luma_stride;
-			}
+			for (int ytmp = 0; ytmp < ofs; ytmp++) { memcpy(luma + dat1, memory_tmp + (adr & 0xfff) + t, xsub); dat1 += stride; t += chr_luma_stride; }
 		}
 		t = 0;
 		for (int xtmp = 0; xtmp < stride; xtmp += chr_luma_stride) {
 			int xsub = ((stride - xtmp) <= chr_luma_stride) ? (stride - xtmp) : chr_luma_stride;
 			dat1 = xtmp;
-			for (int ytmp = 0; ytmp < ofs2; ytmp++) {
-				memcpy(chroma + dat1, memory_tmp + (adr & 0xfff) + (adr2 - adr) + t, xsub);
-				dat1 += stride; t += chr_luma_stride;
-			}
+			for (int ytmp = 0; ytmp < ofs2; ytmp++) { memcpy(chroma + dat1, memory_tmp + (adr & 0xfff) + (adr2 - adr) + t, xsub); dat1 += stride; t += chr_luma_stride; }
 		}
 		munmap(memory_tmp, (adr2 - adr) + (stride + chr_luma_stride) * ofs2);
 	}
 
 	int rgbstride = stride * 3;
-	if (luma && chroma) {
-		for (int y = 0; y < res / 2; ++y) {
-			int out1 = y * rgbstride * 2;
-			int pos = y * stride * 2;
-			const unsigned char* chroma_p = chroma + (y * stride);
-			for (int x = stride; x != 0; x -= 2) {
-				int U = *chroma_p++; int V = *chroma_p++;
-				int RU = yuv2rgbtable_ru[U]; int GU = yuv2rgbtable_gu[U];
-				int GV = yuv2rgbtable_gv[V]; int BV = yuv2rgbtable_bv[V];
-				if (stb_type == XILLEON) { SWAP(RU, BV); }
+	for (int y = 0; y < res / 2; ++y) {
+		int out1 = y * rgbstride * 2; int pos = y * stride * 2;
+		const unsigned char* chroma_p = chroma + (y * stride);
+		for (int x = stride; x != 0; x -= 2) {
+			int U = *chroma_p++; int V = *chroma_p++;
+			int RU = yuv2rgbtable_ru[U]; int GU = yuv2rgbtable_gu[U]; int GV = yuv2rgbtable_gv[V]; int BV = yuv2rgbtable_bv[V];
+			if (stb_type == XILLEON) { SWAP(RU, BV); }
 
-				int Y = yuv2rgbtable_y[luma[pos]];
-				video[out1] = CLAMP((Y + RU) >> 16); video[out1 + 1] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2] = CLAMP((Y + BV) >> 16);
-				Y = yuv2rgbtable_y[luma[stride + pos]];
-				video[out1 + rgbstride] = CLAMP((Y + RU) >> 16); video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
-				pos++; out1 += 3; Y = yuv2rgbtable_y[luma[pos]];
-				video[out1] = CLAMP((Y + RU) >> 16); video[out1 + 1] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2] = CLAMP((Y + BV) >> 16);
-				Y = yuv2rgbtable_y[luma[stride + pos]];
-				video[out1 + rgbstride] = CLAMP((Y + RU) >> 16); video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
-				out1 += 3; pos++;
-			}
+			int Y = yuv2rgbtable_y[luma[pos]];
+			video[out1] = CLAMP((Y + RU) >> 16); video[out1 + 1] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2] = CLAMP((Y + BV) >> 16);
+			Y = yuv2rgbtable_y[luma[stride + pos]];
+			video[out1 + rgbstride] = CLAMP((Y + RU) >> 16); video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
+			pos++; out1 += 3; Y = yuv2rgbtable_y[luma[pos]];
+			video[out1] = CLAMP((Y + RU) >> 16); video[out1 + 1] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2] = CLAMP((Y + BV) >> 16);
+			Y = yuv2rgbtable_y[luma[stride + pos]];
+			video[out1 + rgbstride] = CLAMP((Y + RU) >> 16); video[out1 + 1 + rgbstride] = CLAMP((Y - GV - GU) >> 16); video[out1 + 2 + rgbstride] = CLAMP((Y + BV) >> 16);
+			out1 += 3; pos++;
 		}
 	}
+
+
+
+
+
 	*xres = stride; *yres = res;
 	free(luma); free(chroma); close(mem_fd);
 }
-
 
 void getosd(unsigned char *osd, int *xres, int *yres)
 {
@@ -655,6 +588,5 @@ void combine(unsigned char *output, const unsigned char *video, const unsigned c
 		}
 	}
 }
-
 
 
