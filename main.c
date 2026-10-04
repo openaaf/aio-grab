@@ -72,6 +72,7 @@ int main(int argc, char **argv)
 {
 	int xres_v = 0, yres_v = 0, xres_o = 0, yres_o = 0, xres = 0, yres = 0;
 	int c, use_png = 0, use_jpg = 0, jpg_quality = 80;
+	int quiet = 0, to_stdout = 0, req_width = 0, req_height = 0;
 	unsigned char *video, *osd, *output;
 	const char* filename = "/tmp/screenshot.bmp";
 	char buf[256];
@@ -95,7 +96,8 @@ int main(int argc, char **argv)
 		chr_luma_register_offset = 0x34;
 	}
 
-	while ((c = getopt(argc, argv, "hj:p")) != -1) {
+	// Aktualisierter Option-Parser inklusive -q, -s, -v (wird ignoriert da Standard) und -r
+	while ((c = getopt(argc, argv, "hj:pqsvr:")) != -1) {
 		switch (c) {
 			case 'p':
 				use_png = 1;
@@ -106,13 +108,29 @@ int main(int argc, char **argv)
 				jpg_quality = atoi(optarg);
 				filename = "/tmp/screenshot.jpg";
 				break;
+			case 'q':
+				quiet = 1;
+				break;
+			case 's':
+				to_stdout = 1;
+				filename = NULL;
+				break;
+			case 'v':
+				// Beibehalten für Abwärtskompatibilität (Video ist ohnehin aktiv)
+				break;
+			case 'r':
+				if (sscanf(optarg, "%d:%d", &req_width, &req_height) != 2) {
+					req_width = atoi(optarg);
+					req_height = 0;
+				}
+				break;
 			case 'h':
 			default:
-				fprintf(stderr, "Usage: grab [-p (png)] [-j quality (jpg)] [filename]\n");
+				fprintf(stderr, "Usage: grab [-p (png)] [-j quality (jpg)] [-q (quiet)] [-s (stdout)] [-r width:height] [filename]\n");
 				return 1;
 		}
 	}
-	if (optind < argc)
+	if (optind < argc && !to_stdout)
 		filename = argv[optind];
 
 	size_t mallocsize = 1920U * 1080U;
@@ -121,7 +139,7 @@ int main(int argc, char **argv)
 	output = (unsigned char *)malloc(mallocsize * 3U);
 
 	if (!video || !osd || !output) {
-		fprintf(stderr, "Out of memory.\n");
+		if (!quiet) fprintf(stderr, "Out of memory.\n");
 		return 1;
 	}
 
@@ -129,11 +147,11 @@ int main(int argc, char **argv)
 	getvideo(video, &xres_v, &yres_v);
 
 	if (xres_o <= 0 || yres_o <= 0) {
-		fprintf(stderr, "OSD Capture failed. Saving video only.\n");
+		if (!quiet) fprintf(stderr, "OSD Capture failed. Saving video only.\n");
 		xres = xres_v; yres = yres_v;
 		memcpy(output, video, xres * yres * 3);
 	} else if (xres_v <= 0 || yres_v <= 0) {
-		fprintf(stderr, "Video Capture failed. Saving OSD only.\n");
+		if (!quiet) fprintf(stderr, "Video Capture failed. Saving OSD only.\n");
 		xres = xres_o; yres = yres_o;
 		for(int i=0; i<xres*yres; ++i) {
 			output[i*3+0] = osd[i*4+0];
@@ -152,9 +170,25 @@ int main(int argc, char **argv)
 		}
 	}
 
-	FILE *fd2 = fopen(filename, "wb");
+	// Falls eine feste Zielauflösung über -r gefordert wurde
+	if (req_width > 0) {
+		if (req_height <= 0) {
+			req_height = (yres * req_width) / xres;
+		}
+		unsigned char *scaled_output = (unsigned char *)malloc(req_width * req_height * 3);
+		if (scaled_output) {
+			fast_resize(output, scaled_output, xres, yres, req_width, req_height, 3);
+			free(output);
+			output = scaled_output;
+			xres = req_width;
+			yres = req_height;
+		}
+	}
+
+	FILE *fd2 = to_stdout ? stdout : fopen(filename, "wb");
 	if (!fd2) {
-		fprintf(stderr, "Failed to open output file: %s\n", filename);
+		if (!quiet) fprintf(stderr, "Failed to open output stream.\n");
+		free(video); free(osd); free(output);
 		return 1;
 	}
 
@@ -199,7 +233,6 @@ int main(int argc, char **argv)
 		jpeg_set_quality(&cinfo, jpg_quality, TRUE);
 		jpeg_start_compress(&cinfo, TRUE);
 		
-		// Swap BGR to RGB für jpeglib
 		for (int i = 0; i < xres * yres; ++i) {
 			SWAP(output[i*3+0], output[i*3+2]);
 		}
@@ -212,7 +245,7 @@ int main(int argc, char **argv)
 		jpeg_destroy_compress(&cinfo);
 	}
 
-	fclose(fd2);
+	if (!to_stdout) fclose(fd2);
 	free(video); free(osd); free(output);
 	return 0;
 }
