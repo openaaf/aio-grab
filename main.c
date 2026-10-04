@@ -138,7 +138,7 @@ int main(int argc, char **argv)
 	unsigned char *video, *osd, *output;
 	int hisi_composited_all = 0;
 	const char* filename = "/tmp/screenshot.bmp";
-	char buf[256];
+	char buf;
 
 	FILE *fp = fopen("/proc/fb", "r");
 	if (!fp) {
@@ -268,7 +268,8 @@ int main(int argc, char **argv)
 	if (hisi_uses_composited_snapshot() && !video_only && !osd_only) hisi_composited_all = 1;
 	hisi_grab_request_video_only = video_only;
 
-	if (!video_only && !hisi_composited_all) getosd(osd, &xres_o, &yres_o);
+	// OSD immer initialisieren, falls nicht video_only erzwungen ist (Verhindert 0-Größen-Fehler)
+	if (!video_only) getosd(osd, &xres_o, &yres_o);
 
 	if (!osd_only) {
 		if (stb_type == BRCM7366 || stb_type == BRCM7251 || stb_type == BRCM7252 || stb_type == BRCM7252S || stb_type == BRCM7444 || stb_type == BRCM72604VU || stb_type == BRCM7278 || stb_type == HISIL_ARM)
@@ -279,15 +280,14 @@ int main(int argc, char **argv)
 			getvideo(video, &xres_v, &yres_v);
 	}
 
-	// Korrektur für den Standalone-Kombiner ohne E2-Webif-Kopplung
-	if (osd_only || hisi_composited_all || (xres_v <= 0 || yres_v <= 0)) {
-		xres = xres_o ? xres_o : xres_v; yres = yres_o ? yres_o : yres_v;
-		if (xres <= 0) { xres = 1920; yres = 1080; } // Sichere Standardwerte erpfeilen
-		if (hisi_composited_all && xres_v > 0) memcpy(output, video, xres * yres * 3);
-		else {
-			for(int i = 0; i < xres * yres; ++i) {
-				output[i*3+0] = osd[i*4+0]; output[i*3+1] = osd[i*4+1]; output[i*3+2] = osd[i*4+2];
-			}
+	// FIX: Korrekte Zuweisung der Hardware-Größen, wenn das E2-Webif fehlt
+	if (hisi_composited_all && xres_v > 0) {
+		xres = xres_v; yres = yres_v;
+		memcpy(output, video, xres * yres * 3);
+	} else if (osd_only || (xres_v <= 0 || yres_v <= 0)) {
+		xres = xres_o ? xres_o : 1920; yres = yres_o ? yres_o : 1080;
+		for(int i = 0; i < xres * yres; ++i) {
+			output[i*3+0] = osd[i*4+0]; output[i*3+1] = osd[i*4+1]; output[i*3+2] = osd[i*4+2];
 		}
 	} else if (video_only || (xres_o <= 0 || yres_o <= 0)) {
 		xres = xres_v; yres = yres_v; memcpy(output, video, xres * yres * 3);
@@ -314,49 +314,6 @@ int main(int argc, char **argv)
 
 	FILE *fd2 = to_stdout ? stdout : fopen(filename, "wb");
 	if (!fd2) { free(video); free(osd); free(output); return 1; }
-
-	if (!use_png && !use_jpg) {
-		unsigned char hdr[54]; memset(hdr, 0, 54);
-		hdr[0] = 'B'; hdr[1] = 'M';
-		uint32_t file_size = (xres * yres * 3) + 54;
-		memcpy(&hdr[2], &file_size, 4);
-		hdr[10] = 54; hdr[14] = 40;
-		memcpy(&hdr[18], &xres, 4); memcpy(&hdr[22], &yres, 4);
-		hdr[26] = 1; hdr[28] = 24;
-		fwrite(hdr, 1, 54, fd2);
-		for (int y = yres - 1; y >= 0; y--) fwrite(output + (y * xres * 3), xres * 3, 1, fd2);
-	} 
-	else if (use_png) {
-		png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-		png_infop info_ptr = png_create_info_struct(png_ptr);
-		png_init_io(png_ptr, fd2); png_set_bgr(png_ptr);
-		png_set_IHDR(png_ptr, info_ptr, xres, yres, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
-		png_write_info(png_ptr, info_ptr);
-		png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * yres);
-		for (int y = 0; y < yres; y++) row_pointers[y] = output + (y * xres * 3);
-		png_write_image(png_ptr, row_pointers); png_write_end(png_ptr, info_ptr);
-		png_destroy_write_struct(&png_ptr, &info_ptr); free(row_pointers);
-	} 
-	else if (use_jpg) {
-		struct jpeg_compress_struct cinfo; struct jpeg_error_mgr jerr;
-		cinfo.err = jpeg_std_error(&jerr); jpeg_create_compress(&cinfo);
-		jpeg_stdio_dest(&cinfo, fd2);
-		cinfo.image_width = xres; cinfo.image_height = yres;
-		cinfo.input_components = 3; cinfo.in_color_space = JCS_RGB;
-		jpeg_set_defaults(&cinfo); jpeg_set_quality(&cinfo, jpg_quality, TRUE);
-		jpeg_start_compress(&cinfo, TRUE);
-		for (int i = 0; i < xres * yres; ++i) { SWAP(output[i*3+0], output[i*3+2]); }
-		while (cinfo.next_scanline < cinfo.image_height) {
-			JSAMPROW row_pointer = &output[cinfo.next_scanline * xres * 3];
-			jpeg_write_scanlines(&cinfo, &row_pointer, 1);
-		}
-		jpeg_finish_compress(&cinfo); jpeg_destroy_compress(&cinfo);
-	}
-
-	if (!to_stdout) fclose(fd2);
-	free(video); free(osd); free(output);
-	return 0;
-}
 
 static int hisi_uses_chip_backend(void)
 {
